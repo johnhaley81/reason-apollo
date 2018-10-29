@@ -1,4 +1,4 @@
-open ApolloClient;
+open ReasonApolloTypes;
 
 [@bs.module "react-apollo"]
   external apolloProvider : ReasonReact.reactClass = "ApolloProvider";

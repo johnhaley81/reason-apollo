@@ -1,54 +1,5 @@
 open ReasonApolloTypes;
 
-[@bs.deriving abstract]
-type updateQueryOptions = {
-  [@bs.optional]
-  fetchMoreResult: Js.Json.t,
-  [@bs.optional]
-  variables: Js.Json.t,
-};
-
-type onErrorT;
-type updateQueryT = (Js.Json.t, updateQueryOptions) => Js.Json.t;
-type updateSubscriptionOptions = {
-  .
-  "subscriptionData": Js.Nullable.t(Js.Json.t),
-  "variables": Js.Nullable.t(Js.Json.t),
-};
-type updateQuerySubscriptionT =
-  (Js.Json.t, updateSubscriptionOptions) => Js.Json.t;
-
-[@bs.deriving abstract]
-type subscribeToMoreOptions = {
-  document: queryString,
-  [@bs.optional]
-  variables: Js.Json.t,
-  [@bs.optional]
-  updateQuery: updateQuerySubscriptionT,
-  [@bs.optional]
-  onError: onErrorT,
-};
-
-/* We dont accept a new query for now */
-[@bs.deriving abstract]
-type fetchMoreOptions = {
-  [@bs.optional]
-  variables: Js.Json.t,
-  updateQuery: updateQueryT,
-};
-
-[@bs.deriving abstract]
-type renderPropObjJS = {
-  loading: bool,
-  data: Js.Nullable.t(Js.Json.t),
-  error: Js.Nullable.t(apolloError),
-  refetch: Js.Null_undefined.t(Js.Json.t) => Js.Promise.t(renderPropObjJS),
-  networkStatus: int,
-  variables: Js.Null_undefined.t(Js.Json.t),
-  fetchMore: fetchMoreOptions => Js.Promise.t(unit),
-  subscribeToMore: (subscribeToMoreOptions, unit) => unit,
-};
-
 module Get = (Config: ReasonApolloTypes.Config) => {
   [@bs.module] external gql: ReasonApolloTypes.gql = "graphql-tag";
   [@bs.module "react-apollo"]
@@ -78,7 +29,7 @@ module Get = (Config: ReasonApolloTypes.Config) => {
   };
 
   let graphqlQueryAST = gql(. Config.query);
-  let apolloDataToVariant: renderPropObjJS => response =
+  let apolloDataToVariant: queryRenderPropObjJS => response =
     apolloData =>
       switch (
         apolloData->loadingGet,
@@ -96,7 +47,7 @@ module Get = (Config: ReasonApolloTypes.Config) => {
         })
       };
 
-  let convertJsInputToReason = (apolloData: renderPropObjJS) => {
+  let convertJsInputToReason = (apolloData: queryRenderPropObjJS) => {
     result: apolloData |> apolloDataToVariant,
     data:
       switch (apolloData->dataGet |> ReasonApolloUtils.getNonEmptyObj) {
@@ -140,6 +91,7 @@ module Get = (Config: ReasonApolloTypes.Config) => {
 
   let make =
       (
+        ~client: option(generatedApolloClient)=?,
         ~variables: option(Js.Json.t)=?,
         ~pollInterval: option(int)=?,
         ~notifyOnNetworkStatusChange: option(bool)=?,
@@ -156,6 +108,7 @@ module Get = (Config: ReasonApolloTypes.Config) => {
       ~props=
         Js.Nullable.{
           "query": graphqlQueryAST,
+          "client": client |> fromOption,
           "variables": variables |> fromOption,
           "pollInterval": pollInterval |> fromOption,
           "notifyOnNetworkStatusChange":
