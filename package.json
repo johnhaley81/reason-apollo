@@ -1,13 +1,13 @@
 {
-  "name": "reason-apollo",
+  "name": "@reasonableconsulting/apollo",
+  "description": "BuckleScript bindings for Apollo Client and React Apollo",
+  "author": "Blaine Bublitz <blaine.bublitz@gmail.com>",
+  "contributors": [
+    "Grégoire Van der Auwermeulen <gregoirevandera@gmail.com>"
+  ],
+  "repository": "reasonableconsulting/apollo",
   "version": "0.14.2",
   "license": "MIT",
-  "sideEffects": "false",
-  "description": "Using Apollo client 2 with Reason",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/apollographql/reason-apollo"
-  },
   "scripts": {
     "build": "bsb -make-world",
     "start": "bsb -make-world -w",
@@ -33,7 +33,6 @@
     "React",
     "GraphQL"
   ],
-  "author": "Grégoire Van der Auwermeulen <gregoirevandera@gmail.com>",
   "devDependencies": {
     "apollo-cache-inmemory": "^1.2.1",
     "apollo-client": "^2.3.1",

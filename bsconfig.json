@@ -1,18 +1,20 @@
 {
-  "name": "reason-apollo",
+  "name": "@reasonableconsulting/apollo",
   "sources": [
     {
-      "dir": "src",
-      "public": "all",
-      "subdirs": ["graphql-types"]
+      "dir": "src"
     },
     {
       "dir": "examples",
       "type": "dev"
     }
   ],
-  "bs-dependencies": ["reason-react"],
-  "bsc-flags": ["-bs-super-errors"],
+  "bs-dependencies": [
+    "reason-react"
+  ],
+  "bsc-flags": [
+    "-bs-super-errors"
+  ],
   "reason": {
     "react-jsx": 2
   },
