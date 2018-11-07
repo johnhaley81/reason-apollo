@@ -1,7 +1,4 @@
-/**
- * An abstract type to describe a query string object.
- */
-type queryString;
+include Apollo_Types;
 
 /**
  * The signature of the `graphql-tag/gql` function that transforms a GraphQL
@@ -11,16 +8,6 @@ type queryString;
 type gql = (. string) => queryString;
 
 [@bs.module] external gql: gql = "graphql-tag";
-
-/**
- * An abstract type to describe an Apollo Link object.
- */
-type apolloLink;
-
-/**
- * An abstract type to describe an Apollo Cache object.
- */
-type apolloCache;
 
 module type Config = {
   let query: string;
@@ -148,28 +135,6 @@ module Client = {
     "resetStore": [@bs.meth] (unit => unit),
   };
 
-  type fetch;
-
-  type linkOptions = {
-    .
-    "uri": string,
-    "includeExtensions": Js.Nullable.t(bool),
-    "fetch": Js.Nullable.t(fetch),
-    "headers": Js.Nullable.t(Js.Json.t),
-    "credentials": Js.Nullable.t(string),
-    "fetchOptions": Js.Nullable.t(Js.Json.t),
-  };
-
-  type uploadLinkOptions = {
-    .
-    "uri": Js.Nullable.t(string),
-    "fetch": Js.Nullable.t(fetch),
-    "fetchOptions": Js.Nullable.t(Js.t({.})),
-    "credentials": Js.Nullable.t(string),
-    "headers": Js.Nullable.t(Js.Json.t),
-    "includeExtensions": Js.Nullable.t(bool),
-  };
-
   [@bs.module "apollo-client"] [@bs.new]
   external createApolloClientJS: 'a => t = "ApolloClient";
 
@@ -220,203 +185,16 @@ module Link = {
   [@bs.module "apollo-link"]
   external split: (splitTest => bool, apolloLink, apolloLink) => apolloLink =
     "split";
+
+  module Error = Apollo_Link_Error;
+  module Context = Apollo_Link_Context;
+  module Http = Apollo_Link_Http;
+  module Upload = Apollo_Link_Upload;
+  module WebSocket = Apollo_Link_WebSocket;
 };
 
-module LinkContext = {
-  /* Bind the setContext method */
-  [@bs.module "apollo-link-context"]
-  external make_: (unit => Js.t({..})) => apolloLink = "setContext";
-
-  /**
- * CreateContextLink
- * https://github.com/apollographql/apollo-link/tree/master/packages/apollo-link-context
- */
-  let make = contextHandler =>
-    /* Instanciate a new context link object */
-    make_(contextHandler);
-};
-
-module LinkError = {
-  type networkError = {. "statusCode": int};
-
-  type graphqlError = {
-    .
-    "message": string,
-    "locations": Js.Nullable.t(array(string)),
-    "path": Js.Nullable.t(array(string)),
-    "nodes": Js.Nullable.t(array(string)),
-  };
-
-  type executionResult = {
-    .
-    "errors": Js.Nullable.t(Js.Array.t(graphqlError)),
-    "data": Js.Nullable.t(Js.Json.t),
-  };
-
-  /* TODO define all types */
-  type operation = {. "query": queryString};
-
-  /* TODO define subscription */
-  type subscription;
-
-  type errorResponse = {
-    .
-    "graphQLErrors": Js.Nullable.t(Js.Array.t(graphqlError)),
-    "networkError": Js.Nullable.t(networkError),
-    "response": Js.Nullable.t(executionResult),
-    "operation": operation,
-    "forward": operation => subscription,
-  };
-
-  [@bs.module "apollo-link-error"]
-  external make_: (errorResponse => unit) => apolloLink = "onError";
-
-  /**
- * CreateErrorLink
- * https://github.com/apollographql/apollo-link/tree/master/packages/apollo-link-error
- */
-  let make = errorHandler =>
-    /* Instanciate a new error link object */
-    make_(errorHandler);
-};
-
-module LinkHttp = {
-  /* Bind the HttpLink class */
-  [@bs.module "apollo-link-http"] [@bs.new]
-  external make_: Client.linkOptions => apolloLink = "HttpLink";
-
-  /**
- * CreateHttpLink
- * https://github.com/apollographql/apollo-link/tree/master/packages/apollo-link-http
- */
-  let make =
-      (
-        ~uri,
-        ~includeExtensions=?,
-        ~fetch=?,
-        ~headers=?,
-        ~credentials=?,
-        ~fetchOptions=?,
-        (),
-      ) =>
-    make_({
-      "uri": uri,
-      "includeExtensions": Js.Nullable.fromOption(includeExtensions),
-      "fetch": Js.Nullable.fromOption(fetch),
-      "headers": Js.Nullable.fromOption(headers),
-      "credentials": Js.Nullable.fromOption(credentials),
-      "fetchOptions": Js.Nullable.fromOption(fetchOptions),
-    });
-};
-
-module LinkUpload = {
-  /* Bind createUploadLink function from apollo upload link */
-  [@bs.module "apollo-upload-client"]
-  external make_: Client.uploadLinkOptions => apolloLink = "createUploadLink";
-
-  /**
- * CreateUploadLink
- * https://github.com/jaydenseric/apollo-upload-client#function-createuploadlink
- */
-  let make =
-      (
-        ~uri=?,
-        ~fetch=?,
-        ~fetchOptions=?,
-        ~credentials=?,
-        ~headers=?,
-        ~includeExtensions=?,
-        (),
-      ) =>
-    make_(
-      Js.Nullable.{
-        "uri": fromOption(uri),
-        "fetch": fromOption(fetch),
-        "fetchOptions": fromOption(fetchOptions),
-        "credentials": fromOption(credentials),
-        "headers": fromOption(headers),
-        "includeExtensions": fromOption(includeExtensions),
-      },
-    );
-};
-
-module LinkWebSocket = {
-  /*
-   apollo link ws
-   */
-
-  [@bs.deriving abstract]
-  type webSocketLinkOptionsT = {
-    [@bs.optional]
-    reconnect: bool,
-  };
-
-  [@bs.deriving abstract]
-  type webSocketLinkT = {
-    uri: string,
-    options: webSocketLinkOptionsT,
-  };
-
-  /* bind apollo-link-ws */
-  [@bs.module "apollo-link-ws"] [@bs.new]
-  external make_: webSocketLinkT => apolloLink = "WebSocketLink";
-
-  let make = (~uri, ~reconnect=?, ()) =>
-    make_(
-      webSocketLinkT(~uri, ~options=webSocketLinkOptionsT(~reconnect?, ())),
-    );
-};
-
-module InMemoryCache = {
-  /**
- * Used on the client to rehydrate the cache using the initial data passed from the server
- * - e.g. window.__APOLLO_STATE__
- */
-  type restoreData;
-
-  /**
- * Define the data to pass to the restore method that'll be used used to rehydrate client.
- * If you don't want to pass any data, simply return `Js_null_undefined.undefined`.
- */
-  type inMemoryCacheRestoreData = Js.Nullable.t(restoreData);
-
-  /**
- * CreateInMemoryCache
- * https://github.com/apollographql/apollo-client/tree/master/packages/apollo-cache-inmemory
- */
-  /* Bind the InMemoryCache class */
-  [@bs.module "apollo-cache-inmemory"] [@bs.new]
-  external apolloInMemoryCache: 'a => apolloCache = "InMemoryCache";
-
-  /* Bind the restore method */
-  [@bs.send.pipe: 't]
-  external restore: inMemoryCacheRestoreData => apolloCache = "restore";
-
-  /* Fragment matcher */
-  type fragmentMatcher;
-
-  [@bs.module "apollo-cache-inmemory"] [@bs.new]
-  external introspectionFragmentMatcher: Js.t({..}) => fragmentMatcher =
-    "IntrospectionFragmentMatcher";
-
-  let createIntrospectionFragmentMatcher = (~data) =>
-    introspectionFragmentMatcher({"introspectionQueryResultData": data});
-
-  /* Instantiate a new cache object */
-  [@bs.obj]
-  external makeApolloInMemoryCacheParams:
-    (
-      ~dataIdFromObject: Js.t({..}) => string=?,
-      ~fragmentMatcher: fragmentMatcher=?
-    ) =>
-    _ =
-    "";
-
-  let createInMemoryCache = (~dataIdFromObject=?, ~fragmentMatcher=?, ()) =>
-    /* Apollo Client, looks for key in Object. Doesn't check if value is null  */
-    apolloInMemoryCache(
-      makeApolloInMemoryCacheParams(~dataIdFromObject?, ~fragmentMatcher?),
-    );
+module Cache = {
+  module InMemory = Apollo_Cache_InMemory;
 };
 
 module Provider = {
