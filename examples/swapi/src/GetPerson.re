@@ -14,7 +14,7 @@ module GetPerson = [%graphql
    |}
 ];
 
-module GetPersonQuery = ReasonApollo.CreateQuery(GetPerson);
+module GetPersonQuery = Apollo.CreateQuery(GetPerson);
 
 let component = ReasonReact.statelessComponent("Query");
 
@@ -26,11 +26,11 @@ let make = _children => {
        */
     let getPersonQuery = GetPerson.make(~id="cjdgbi6d136a90157kpqef72m", ());
     <GetPersonQuery variables=getPersonQuery##variables>
-      ...(
+      ...{
            ({result}) =>
              <div>
-               <h1> ("Get Person: " |> ste) </h1>
-               (
+               <h1> {"Get Person: " |> ste} </h1>
+               {
                  switch (result) {
                  | Error(e) =>
                    Js.log(e);
@@ -39,12 +39,12 @@ let make = _children => {
                  | Data(response) =>
                    switch (response##person) {
                    | None => "No Person Data" |> ste
-                   | Some(person) => <div> (person##name |> ste) </div>
+                   | Some(person) => <div> {person##name |> ste} </div>
                    }
                  }
-               )
+               }
              </div>
-         )
+         }
     </GetPersonQuery>;
   },
 };

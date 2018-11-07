@@ -1,11 +1,21 @@
 {
   "name": "reason-scripts",
-  "sources": ["src", "lib"],
-  "bs-dependencies": ["reason-react", "@glennsl/bs-jest", "bs-css", "reason-apollo"],
+  "sources": [
+    "src",
+    "lib"
+  ],
+  "bs-dependencies": [
+    "reason-react",
+    "@glennsl/bs-jest",
+    "bs-css",
+    "@reasonableconsulting/apollo"
+  ],
   "reason": {
     "react-jsx": 2
   },
-  "bsc-flags": ["-bs-super-errors"],
+  "bsc-flags": [
+    "-bs-super-errors"
+  ],
   "refmt": 3,
   "package-specs": {
     "module": "commonjs",

@@ -28,7 +28,7 @@
     "react": "^16.3.2",
     "react-apollo": "^2.1.6",
     "react-dom": "^16.3.2",
-    "reason-apollo": "0.14.1",
+    "@reasonableconsulting/apollo": "github:reasonableconsulting/apollo#master",
     "reason-react": "^0.5.3",
     "subscriptions-transport-ws": "^0.9.11"
   },

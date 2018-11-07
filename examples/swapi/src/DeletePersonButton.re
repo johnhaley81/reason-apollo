@@ -10,7 +10,7 @@ module DeletePerson = [%graphql
 |}
 ];
 
-module DeletePersonMutation = ReasonApollo.CreateMutation(DeletePerson);
+module DeletePersonMutation = Apollo.CreateMutation(DeletePerson);
 
 let component = ReasonReact.statelessComponent("DeletePersonButton");
 
@@ -19,23 +19,23 @@ let make = (~id, _children) => {
   render: _self => {
     let deletePersonMutation = DeletePerson.make(~id, ());
     <DeletePersonMutation>
-      ...(
+      ...{
            (mutation, {result}) =>
              <div>
                <button
-                 onClick=(
-                   (_) =>
+                 onClick={
+                   _ =>
                      mutation(
                        ~variables=deletePersonMutation##variables,
                        ~refetchQueries=[|"getAllPersons"|],
                        (),
                      )
                      |> ignore
-                 )>
-                 ("Delete ID" |> ste)
+                 }>
+                 {"Delete ID" |> ste}
                </button>
                <span>
-                 (
+                 {
                    switch (result) {
                    | NotCalled =>
                      Js.log("Not called");
@@ -52,10 +52,10 @@ let make = (~id, _children) => {
                      Js.log("Loading");
                      "Loading" |> ste;
                    }
-                 )
+                 }
                </span>
              </div>
-         )
+         }
     </DeletePersonMutation>;
   },
 };

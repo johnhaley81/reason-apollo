@@ -1,5 +1,4 @@
 ReactDOMRe.renderToElementWithId(
-    <ReasonApollo.Provider client=Client.instance>
-        <Page />
-    </ReasonApollo.Provider>
-    , "index");
+  <Apollo.Provider client=Client.instance> <Page /> </Apollo.Provider>,
+  "index",
+);
