@@ -1,8 +1,5 @@
-/* open Apollo.Links; */
-open Apollo.InMemoryCache;
-
 /* Create an InMemoryCache */
-let inMemoryCache = createInMemoryCache();
+let inMemoryCache = Apollo.Cache.InMemory.make();
 
 /*
    OR with dataIdFromObject:
@@ -18,7 +15,7 @@ let inMemoryCache = createInMemoryCache();
 
 /* Create a Link that puts an Authorization header in context */
 let headerContextLink =
-  Apollo.LinkContext.make(() =>
+  Apollo.Link.Context.make(() =>
     {
       "headers": {
         "authorization": "Bearer $123",
@@ -28,14 +25,14 @@ let headerContextLink =
 
 /* Create an HTTP Link */
 let httpLink =
-  Apollo.LinkHttp.make(
+  Apollo.Link.Http.make(
     ~uri="https://api.graph.cool/simple/v1/cjdgba1jw4ggk0185ig4bhpsn",
     (),
   );
 
 /* WebSocket client */
 let webSocketLink =
-  Apollo.LinkWebSocket.make(
+  Apollo.Link.WebSocket.make(
     ~uri="ws://localhost:8080/graphql",
     ~reconnect=true,
     (),

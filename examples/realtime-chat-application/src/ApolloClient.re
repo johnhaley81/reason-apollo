@@ -1,16 +1,16 @@
 /* Create an InMemoryCache */
-let inMemoryCache = Apollo.InMemoryCache.createInMemoryCache();
+let inMemoryCache = Apollo.Cache.InMemory.make();
 
 /* Create an HTTP Link */
 let httpLink =
-  Apollo.LinkHttp.make(
+  Apollo.Link.Http.make(
     ~uri="https://boiling-bastion-96890.herokuapp.com/graphql",
     (),
   );
 
 /* WebSocket client */
 let webSocketLink =
-  Apollo.LinkWebSocket.make(
+  Apollo.Link.WebSocket.make(
     ~uri="wss://boiling-bastion-96890.herokuapp.com/graphql",
     ~reconnect=true,
     (),
