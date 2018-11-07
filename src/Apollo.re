@@ -195,6 +195,14 @@ module Link = {
 
 module Cache = {
   module InMemory = Apollo_Cache_InMemory;
+
+  type cacheData = {
+    .
+    "id": string,
+    "data": Js.Json.t,
+  };
+
+  [@bs.send] external writeData: (apolloCache, cacheData) => unit = "";
 };
 
 module Provider = {
