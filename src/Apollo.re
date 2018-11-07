@@ -22,37 +22,6 @@ type apolloLink;
  */
 type apolloCache;
 
-type networkError = {. "statusCode": int};
-
-type graphqlError = {
-  .
-  "message": string,
-  "locations": Js.Nullable.t(array(string)),
-  "path": Js.Nullable.t(array(string)),
-  "nodes": Js.Nullable.t(array(string)),
-};
-
-type executionResult = {
-  .
-  "errors": Js.Nullable.t(Js.Array.t(graphqlError)),
-  "data": Js.Nullable.t(Js.Json.t),
-};
-
-/* TODO define all types */
-type operation = {. "query": queryString};
-
-/* TODO define subscription */
-type subscription;
-
-type errorResponse = {
-  .
-  "graphQLErrors": Js.Nullable.t(Js.Array.t(graphqlError)),
-  "networkError": Js.Nullable.t(networkError),
-  "response": Js.Nullable.t(executionResult),
-  "operation": operation,
-  "forward": operation => subscription,
-};
-
 module type Config = {
   let query: string;
   type t;
@@ -64,44 +33,6 @@ type apolloError = {
   "message": string,
   "graphQLErrors": Js.Nullable.t(array(string)),
   "networkError": Js.Nullable.t(string),
-};
-
-type apolloOptions = {
-  .
-  "query": queryString,
-  "variables": Js.Json.t,
-};
-
-type queryResponse('a) =
-  | Loading
-  | Error(apolloError)
-  | Data('a);
-
-type mutationResponse('a) =
-  | Loading
-  | Error(apolloError)
-  | Data('a)
-  | NotCalled;
-
-type subscriptionResponse('a) =
-  | Loading
-  | Error(apolloError)
-  | Data('a);
-
-/*
- apollo link ws
- */
-
-[@bs.deriving abstract]
-type webSocketLinkOptionsT = {
-  [@bs.optional]
-  reconnect: bool,
-};
-
-[@bs.deriving abstract]
-type webSocketLinkT = {
-  uri: string,
-  options: webSocketLinkOptionsT,
 };
 
 type documentNodeT;
@@ -182,12 +113,19 @@ type mutationRenderPropObjJS = {
   "variables": Js.Null_undefined.t(Js.Json.t),
 };
 
-type generatedApolloClient = {
-  .
-  "query": [@bs.meth] (queryObj => Js.Promise.t(queryRenderPropObjJS)),
-  "mutate": [@bs.meth] (mutationObj => Js.Promise.t(mutationRenderPropObjJS)),
-  "resetStore": [@bs.meth] (unit => unit),
-};
+let getNonEmptyObj = jsObj =>
+  switch (jsObj |> Js.Nullable.toOption) {
+  | None => None
+  | Some(data) =>
+    switch (Js.Json.decodeObject(data)) {
+    | None => None
+    | Some(data) =>
+      switch (Array.length(Js.Dict.keys(data))) {
+      | 0 => None
+      | _ => Some(Js.Json.object_(data))
+      }
+    }
+  };
 
 module Utilities = {
   type operationDefinitionNode = {
@@ -199,23 +137,17 @@ module Utilities = {
   [@bs.module "apollo-utilities"]
   external getMainDefinition: documentNodeT => operationDefinitionNode =
     "getMainDefinition";
-
-  let getNonEmptyObj = jsObj =>
-    switch (jsObj |> Js.Nullable.toOption) {
-    | None => None
-    | Some(data) =>
-      switch (Js.Json.decodeObject(data)) {
-      | None => None
-      | Some(data) =>
-        switch (Array.length(Js.Dict.keys(data))) {
-        | 0 => None
-        | _ => Some(Js.Json.object_(data))
-        }
-      }
-    };
 };
 
 module Client = {
+  type t = {
+    .
+    "query": [@bs.meth] (queryObj => Js.Promise.t(queryRenderPropObjJS)),
+    "mutate":
+      [@bs.meth] (mutationObj => Js.Promise.t(mutationRenderPropObjJS)),
+    "resetStore": [@bs.meth] (unit => unit),
+  };
+
   type fetch;
 
   type linkOptions = {
@@ -239,7 +171,7 @@ module Client = {
   };
 
   [@bs.module "apollo-client"] [@bs.new]
-  external createApolloClientJS: 'a => generatedApolloClient = "ApolloClient";
+  external createApolloClientJS: 'a => t = "ApolloClient";
 
   [@bs.obj]
   external apolloClientObjectParam:
@@ -305,6 +237,37 @@ module LinkContext = {
 };
 
 module LinkError = {
+  type networkError = {. "statusCode": int};
+
+  type graphqlError = {
+    .
+    "message": string,
+    "locations": Js.Nullable.t(array(string)),
+    "path": Js.Nullable.t(array(string)),
+    "nodes": Js.Nullable.t(array(string)),
+  };
+
+  type executionResult = {
+    .
+    "errors": Js.Nullable.t(Js.Array.t(graphqlError)),
+    "data": Js.Nullable.t(Js.Json.t),
+  };
+
+  /* TODO define all types */
+  type operation = {. "query": queryString};
+
+  /* TODO define subscription */
+  type subscription;
+
+  type errorResponse = {
+    .
+    "graphQLErrors": Js.Nullable.t(Js.Array.t(graphqlError)),
+    "networkError": Js.Nullable.t(networkError),
+    "response": Js.Nullable.t(executionResult),
+    "operation": operation,
+    "forward": operation => subscription,
+  };
+
   [@bs.module "apollo-link-error"]
   external make_: (errorResponse => unit) => apolloLink = "onError";
 
@@ -378,6 +341,22 @@ module LinkUpload = {
 };
 
 module LinkWebSocket = {
+  /*
+   apollo link ws
+   */
+
+  [@bs.deriving abstract]
+  type webSocketLinkOptionsT = {
+    [@bs.optional]
+    reconnect: bool,
+  };
+
+  [@bs.deriving abstract]
+  type webSocketLinkT = {
+    uri: string,
+    options: webSocketLinkOptionsT,
+  };
+
   /* bind apollo-link-ws */
   [@bs.module "apollo-link-ws"] [@bs.new]
   external make_: webSocketLinkT => apolloLink = "WebSocketLink";
@@ -444,7 +423,7 @@ module Provider = {
   [@bs.module "react-apollo"]
   external apolloProvider: ReasonReact.reactClass = "ApolloProvider";
 
-  let make = (~client: generatedApolloClient, children) =>
+  let make = (~client: Client.t, children) =>
     ReasonReact.wrapJsForReason(
       ~reactClass=apolloProvider,
       ~props={"client": client},
@@ -456,7 +435,7 @@ module Consumer = {
   [@bs.module "react-apollo"]
   external apolloConsumer: ReasonReact.reactClass = "ApolloConsumer";
 
-  let make = (children: generatedApolloClient => ReasonReact.reactElement) =>
+  let make = (children: Client.t => ReasonReact.reactElement) =>
     ReasonReact.wrapJsForReason(
       ~reactClass=apolloConsumer,
       ~props=Js.Obj.empty(),
@@ -470,7 +449,10 @@ module Consumer = {
 module CreateQuery = (Config: Config) => {
   [@bs.module "react-apollo"]
   external queryComponent: ReasonReact.reactClass = "Query";
-  type response = queryResponse(Config.t);
+  type response =
+    | Loading
+    | Error(apolloError)
+    | Data(Config.t);
 
   type renderPropObj = {
     result: response,
@@ -516,7 +498,7 @@ module CreateQuery = (Config: Config) => {
   let convertJsInputToReason = (apolloData: queryRenderPropObjJS) => {
     result: apolloData |> apolloDataToVariant,
     data:
-      switch (apolloData->dataGet |> Utilities.getNonEmptyObj) {
+      switch (apolloData->dataGet |> getNonEmptyObj) {
       | None => None
       | Some(data) =>
         switch (Config.parse(data)) {
@@ -559,7 +541,7 @@ module CreateQuery = (Config: Config) => {
 
   let make =
       (
-        ~client: option(generatedApolloClient)=?,
+        ~client: option(Client.t)=?,
         ~variables: option(Js.Json.t)=?,
         ~pollInterval: option(int)=?,
         ~notifyOnNetworkStatusChange: option(bool)=?,
@@ -608,7 +590,11 @@ module CreateMutation = (Config: Config) => {
   [@bs.module "react-apollo"]
   external mutationComponent: ReasonReact.reactClass = "Mutation";
   let graphqlMutationAST = gql(. Config.query);
-  type response = mutationResponse(Config.t);
+  type response =
+    | Loading
+    | Error(apolloError)
+    | Data(Config.t)
+    | NotCalled;
   type renderPropObj = {
     result: response,
     data: option(Config.t),
@@ -630,7 +616,7 @@ module CreateMutation = (Config: Config) => {
     apolloData =>
       switch (
         apolloData##loading,
-        apolloData##data |> Utilities.getNonEmptyObj,
+        apolloData##data |> getNonEmptyObj,
         apolloData##error |> Js.Nullable.toOption,
       ) {
       | (true, _, _) => Loading
@@ -641,7 +627,7 @@ module CreateMutation = (Config: Config) => {
   let convertJsInputToReason = (apolloData: mutationRenderPropObjJS) => {
     result: apolloDataToReason(apolloData),
     data:
-      switch (apolloData##data |> Utilities.getNonEmptyObj) {
+      switch (apolloData##data |> getNonEmptyObj) {
       | None => None
       | Some(data) =>
         switch (Config.parse(data)) {
@@ -655,7 +641,7 @@ module CreateMutation = (Config: Config) => {
   };
   let make =
       (
-        ~client: option(generatedApolloClient)=?,
+        ~client: option(Client.t)=?,
         ~variables: option(Js.Json.t)=?,
         ~onError: option(unit => unit)=?,
         ~onCompleted: option(unit => unit)=?,
@@ -688,7 +674,10 @@ module CreateSubscription = (Config: Config) => {
 
   let graphQLSubscriptionAST = gql(. Config.query);
 
-  type response = subscriptionResponse(Config.t);
+  type response =
+    | Loading
+    | Error(apolloError)
+    | Data(Config.t);
 
   type renderPropObj = {
     result: response,
@@ -726,7 +715,7 @@ module CreateSubscription = (Config: Config) => {
     apolloData => {
       result: apolloData |> apolloDataToVariant,
       data:
-        switch (apolloData##data |> Utilities.getNonEmptyObj) {
+        switch (apolloData##data |> getNonEmptyObj) {
         | None => None
         | Some(data) =>
           switch (Config.parse(data)) {
@@ -744,6 +733,7 @@ module CreateSubscription = (Config: Config) => {
 
   let make =
       (
+        ~client: option(Client.t)=?,
         ~variables: option(Js.Json.t)=?,
         ~children: renderPropObj => ReasonReact.reactElement,
       ) =>
@@ -752,6 +742,7 @@ module CreateSubscription = (Config: Config) => {
       ~props=
         Js.Nullable.{
           "subscription": graphQLSubscriptionAST,
+          "client": client |> fromOption,
           "variables": variables |> fromOption,
         },
       apolloData =>
