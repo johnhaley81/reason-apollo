@@ -100,6 +100,57 @@ type mutationRenderPropObjJS = {
   "variables": Js.Null_undefined.t(Js.Json.t),
 };
 
+type client = {
+  .
+  "query": [@bs.meth] (queryObj => Js.Promise.t(queryRenderPropObjJS)),
+  "mutate": [@bs.meth] (mutationObj => Js.Promise.t(mutationRenderPropObjJS)),
+  "resetStore": [@bs.meth] (unit => unit),
+};
+
+type context;
+type info;
+
+type resolverFunc = (Js.Json.t, Js.Json.t, context, info) => Js.Json.t;
+type resolver = {
+  field: string,
+  resolver: resolverFunc,
+};
+
+type initFunc = client => Js.Json.t;
+type init = {
+  field: string,
+  init: initFunc,
+};
+
+module Context = {
+  [@bs.get] external cacheGet: context => apolloCache = "cache";
+};
+
+module Info = {};
+
+module Initializers = {
+  type t = Js.Dict.t(initFunc);
+
+  let recordToTuple = ({field, init}) => (field, init);
+
+  /* TODO: inteface? */
+  let make = inits => Belt.Array.map(inits, recordToTuple)->Js.Dict.fromArray;
+};
+
+module Resolvers = {
+  type t = Js.Dict.t(Js.Dict.t(resolverFunc));
+
+  let recordToTuple = ({field, resolver}) => (field, resolver);
+
+  /* TODO: interfaces */
+  let keyed = (key, resolvers) =>
+    Js.Dict.fromArray([|
+      (key, Belt.Array.map(resolvers, recordToTuple)->Js.Dict.fromArray),
+    |]);
+  let queries = resolvers => keyed("Query", resolvers);
+  let mutations = resolvers => keyed("Mutation", resolvers);
+};
+
 let getNonEmptyObj = jsObj =>
   switch (jsObj |> Js.Nullable.toOption) {
   | None => None
@@ -127,29 +178,28 @@ module Utilities = {
 };
 
 module Client = {
-  type t = {
-    .
-    "query": [@bs.meth] (queryObj => Js.Promise.t(queryRenderPropObjJS)),
-    "mutate":
-      [@bs.meth] (mutationObj => Js.Promise.t(mutationRenderPropObjJS)),
-    "resetStore": [@bs.meth] (unit => unit),
-  };
-
   [@bs.module "apollo-client"] [@bs.new]
-  external createApolloClientJS: 'a => t = "ApolloClient";
+  external createApolloClientJS: 'a => client = "ApolloClient";
 
-  [@bs.obj]
-  external apolloClientObjectParam:
-    (
-      ~link: apolloLink,
-      ~cache: apolloCache,
-      ~ssrMode: bool=?,
-      ~ssrForceFetchDelay: int=?,
-      ~connectToDevTools: bool=?,
-      ~queryDeduplication: bool=?
-    ) =>
-    _ =
-    "";
+  [@bs.deriving abstract]
+  type apolloClientObjectParam = {
+    link: apolloLink,
+    cache: apolloCache,
+    [@bs.optional]
+    ssrMode: bool,
+    [@bs.optional]
+    ssrForceFetchDelay: int,
+    [@bs.optional]
+    connectToDevTools: bool,
+    [@bs.optional]
+    queryDeduplication: bool,
+    [@bs.optional]
+    initializers: array(Initializers.t),
+    [@bs.optional]
+    resolvers: array(Resolvers.t),
+    [@bs.optional]
+    typeDefs: string,
+  };
 
   /*
    * Expose a make function to create a Client that has to be passed to the ApolloProvider
@@ -162,6 +212,9 @@ module Client = {
         ~ssrForceFetchDelay=?,
         ~connectToDevTools=?,
         ~queryDeduplication=?,
+        ~initializers=?,
+        ~resolvers=?,
+        ~typeDefs=?,
         (),
       ) =>
     createApolloClientJS(
@@ -172,6 +225,10 @@ module Client = {
         ~ssrForceFetchDelay?,
         ~connectToDevTools?,
         ~queryDeduplication?,
+        ~initializers?,
+        ~resolvers?,
+        ~typeDefs?,
+        (),
       ),
     );
 };
@@ -196,20 +253,34 @@ module Link = {
 module Cache = {
   module InMemory = Apollo_Cache_InMemory;
 
-  type cacheData = {
-    .
-    "id": string,
-    "data": Js.Json.t,
+  [@bs.deriving abstract]
+  type writeQueryOptions = {
+    query: queryString,
+    data: Js.Json.t,
   };
 
-  [@bs.send] external writeData: (apolloCache, cacheData) => unit = "";
+  [@bs.deriving abstract]
+  type readQueryOptions = {query: queryString};
+
+  [@bs.send]
+  external writeQuery_: (apolloCache, writeQueryOptions) => unit =
+    "writeQuery";
+  [@bs.send]
+  external readQuery_: (apolloCache, readQueryOptions) => Js.Json.t =
+    "readQuery";
+
+  let writeQuery = (~query, ~data, cache) =>
+    writeQuery_(cache, writeQueryOptions(~query, ~data));
+
+  let readQuery = (~query, cache) =>
+    readQuery_(cache, readQueryOptions(~query));
 };
 
 module Provider = {
   [@bs.module "react-apollo"]
   external apolloProvider: ReasonReact.reactClass = "ApolloProvider";
 
-  let make = (~client: Client.t, children) =>
+  let make = (~client: client, children) =>
     ReasonReact.wrapJsForReason(
       ~reactClass=apolloProvider,
       ~props={"client": client},
@@ -221,7 +292,7 @@ module Consumer = {
   [@bs.module "react-apollo"]
   external apolloConsumer: ReasonReact.reactClass = "ApolloConsumer";
 
-  let make = (children: Client.t => ReasonReact.reactElement) =>
+  let make = (children: client => ReasonReact.reactElement) =>
     ReasonReact.wrapJsForReason(
       ~reactClass=apolloConsumer,
       ~props=Js.Obj.empty(),
@@ -327,7 +398,7 @@ module CreateQuery = (Config: Config) => {
 
   let make =
       (
-        ~client: option(Client.t)=?,
+        ~client: option(client)=?,
         ~variables: option(Js.Json.t)=?,
         ~pollInterval: option(int)=?,
         ~notifyOnNetworkStatusChange: option(bool)=?,
@@ -427,7 +498,7 @@ module CreateMutation = (Config: Config) => {
   };
   let make =
       (
-        ~client: option(Client.t)=?,
+        ~client: option(client)=?,
         ~variables: option(Js.Json.t)=?,
         ~onError: option(unit => unit)=?,
         ~onCompleted: option(unit => unit)=?,
@@ -519,7 +590,7 @@ module CreateSubscription = (Config: Config) => {
 
   let make =
       (
-        ~client: option(Client.t)=?,
+        ~client: option(client)=?,
         ~variables: option(Js.Json.t)=?,
         ~children: renderPropObj => ReasonReact.reactElement,
       ) =>

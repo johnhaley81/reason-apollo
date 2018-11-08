@@ -15,17 +15,15 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "peerDependencies": {
-    "apollo-cache-inmemory": "^1.2.1",
-    "apollo-client": "^2.3.1",
-    "apollo-link": "^1.2.2",
-    "apollo-link-http": "^1.5.4",
-    "apollo-upload-client": "^9.0.0",
-    "apollo-utilities": "^1.0.16",
+    "apollo-cache-inmemory": "alpha",
+    "apollo-client": "alpha",
+    "apollo-link": "^1.2.3",
+    "apollo-link-http": "^1.5.5",
+    "apollo-utilities": "alpha",
     "bs-platform": "^4.0.5",
-    "graphql": "^0.13.2",
-    "graphql-tag": "^2.9.2",
-    "graphql_ppx": "^0.2.3",
-    "react-apollo": "^2.1.6"
+    "graphql": "^14.0.2",
+    "graphql-tag": "^2.10.0",
+    "react-apollo": "alpha"
   },
   "keywords": [
     "Reason",
@@ -34,17 +32,14 @@
     "GraphQL"
   ],
   "devDependencies": {
-    "apollo-cache-inmemory": "^1.2.1",
-    "apollo-client": "^2.3.1",
-    "apollo-link": "^1.2.2",
-    "apollo-link-http": "^1.5.4",
-    "apollo-link-ws": "^1.0.8",
-    "apollo-upload-client": "^9.0.0",
+    "apollo-cache-inmemory": "alpha",
+    "apollo-client": "alpha",
+    "apollo-link": "^1.2.3",
+    "apollo-link-http": "^1.5.5",
     "bs-platform": "^4.0.5",
-    "graphql": "^0.13.2",
-    "graphql-tag": "^2.9.2",
-    "graphql_ppx": "^0.2.4",
-    "react-apollo": "^2.1.6",
+    "graphql": "^14.0.2",
+    "graphql-tag": "^2.10.0",
+    "react-apollo": "alpha",
     "reason-react": "^0.5.3"
   },
   "dependencies": {}

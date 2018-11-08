@@ -28,8 +28,8 @@ type resolvers = {
 
 type linkOptions = {
   .
+  "defaults": Js.Json.t,
   "cache": apolloCache,
-  "typeDefs": string,
   "resolvers": resolvers,
 };
 
@@ -43,15 +43,15 @@ external make_: linkOptions => apolloLink = "withClientState";
  */
 let make =
     (
+      ~defaults,
       ~mutations=Resolvers.make([]),
       ~queries=Resolvers.make([]),
-      ~typeDefs,
       cache,
     ) =>
   /* Instanciate a new context link object */
   make_({
+    "defaults": defaults,
     "cache": cache,
-    "typeDefs": typeDefs,
     "resolvers": {
       "Query": queries,
       "Mutation": mutations,
