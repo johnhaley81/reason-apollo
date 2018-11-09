@@ -11,7 +11,7 @@ type renderPropObjJS = {
 };
 
 module MutationFactory = (Config: Config) => {
-  external cast :
+  external cast:
     string =>
     {
       .
@@ -19,9 +19,9 @@ module MutationFactory = (Config: Config) => {
       "loading": bool,
     } =
     "%identity";
-  [@bs.module] external gql : ReasonApolloTypes.gql = "graphql-tag";
+  [@bs.module "graphql-tag"] external gql: ReasonApolloTypes.gql = "default";
   [@bs.module "react-apollo"]
-  external mutationComponent : ReasonReact.reactClass = "Mutation";
+  external mutationComponent: ReasonReact.reactClass = "Mutation";
   let graphqlMutationAST = gql(. Config.query);
   type response = mutationResponse(Config.t);
   type renderPropObj = {
@@ -35,7 +35,7 @@ module MutationFactory = (Config: Config) => {
     (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
     Js.Promise.t(renderPropObjJS);
   [@bs.obj]
-  external makeMutateParams :
+  external makeMutateParams:
     (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?) => _ =
     "";
   let apolloMutationFactory =
@@ -78,14 +78,12 @@ module MutationFactory = (Config: Config) => {
     ReasonReact.wrapJsForReason(
       ~reactClass=mutationComponent,
       ~props=
-        Js.Nullable.(
-          {
-            "mutation": graphqlMutationAST,
-            "variables": variables |> fromOption,
-            "onError": onError |> fromOption,
-            "onCompleted": onCompleted |> fromOption,
-          }
-        ),
+        Js.Nullable.{
+          "mutation": graphqlMutationAST,
+          "variables": variables |> fromOption,
+          "onError": onError |> fromOption,
+          "onCompleted": onCompleted |> fromOption,
+        },
       (mutation, apolloData) =>
       children(
         apolloMutationFactory(~jsMutation=mutation),
