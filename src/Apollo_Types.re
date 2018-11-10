@@ -17,3 +17,8 @@ type apolloCache;
  * An abstract type to describe fetch.
  */
 type fetch;
+
+/**
+ * An abstract type to describe a storage type supported by apollo-cache-persist.
+ */
+type storage;

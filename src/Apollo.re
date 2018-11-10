@@ -265,6 +265,7 @@ module Link = {
 
 module Cache = {
   module InMemory = Apollo_Cache_InMemory;
+  module Persist = Apollo_Cache_Persist;
 
   [@bs.deriving abstract]
   type writeQueryOptions = {
