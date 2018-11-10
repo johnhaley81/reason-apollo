@@ -26,18 +26,6 @@ type documentNodeT;
 
 type splitTest = {. "query": documentNodeT};
 
-type queryObj = {
-  .
-  "query": queryString,
-  "variables": Js.Json.t,
-};
-
-type mutationObj = {
-  .
-  "mutation": queryString,
-  "variables": Js.Json.t,
-};
-
 type onErrorT;
 
 [@bs.deriving abstract]
@@ -100,12 +88,7 @@ type mutationRenderPropObjJS = {
   "variables": Js.Null_undefined.t(Js.Json.t),
 };
 
-type client = {
-  .
-  "query": [@bs.meth] (queryObj => Js.Promise.t(queryRenderPropObjJS)),
-  "mutate": [@bs.meth] (mutationObj => Js.Promise.t(mutationRenderPropObjJS)),
-  "resetStore": [@bs.meth] (unit => unit),
-};
+type client;
 
 type context;
 type info;
@@ -180,6 +163,36 @@ module Utilities = {
 module Client = {
   [@bs.module "apollo-client"] [@bs.new]
   external createApolloClientJS: 'a => client = "ApolloClient";
+
+  [@bs.deriving abstract]
+  type mutateOptions = {
+    mutation: queryString,
+    [@bs.optional]
+    variables: Js.Json.t,
+  };
+
+  [@bs.send]
+  external mutate_:
+    (client, mutateOptions) => Js.Promise.t(mutationRenderPropObjJS) =
+    "mutate";
+  let mutate = (~mutation, ~variables=?, client) =>
+    mutate_(client, mutateOptions(~mutation, ~variables?, ()));
+
+  [@bs.deriving abstract]
+  type queryOptions = {
+    query: queryString,
+    [@bs.optional]
+    variables: Js.Json.t,
+  };
+
+  [@bs.send]
+  external query_:
+    (client, queryOptions) => Js.Promise.t(queryRenderPropObjJS) =
+    "query";
+  let query = (~query, ~variables=?, client) =>
+    query_(client, queryOptions(~query, ~variables?, ()));
+
+  [@bs.send] external resetStore: client => unit = "";
 
   [@bs.deriving abstract]
   type apolloClientObjectParam = {
