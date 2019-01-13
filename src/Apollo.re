@@ -123,7 +123,7 @@ type mutationRenderPropObjJS = {
   "data": Js.Nullable.t(Js.Json.t),
   "error": Js.Nullable.t(apolloError),
   "networkStatus": int,
-  "variables": Js.Null_undefined.t(Js.Json.t),
+  "variables": Js.Nullable.t(Js.Json.t),
 };
 
 type client;
@@ -356,7 +356,7 @@ module Consumer = {
  */
 module CreateQuery = (Config: ResultConfig) => {
   [@bs.module "react-apollo"]
-  external queryComponent: ReasonReact.reactClass = "Query";
+  external component: ReasonReact.reactClass = "Query";
 
   type response =
     | Loading
@@ -451,7 +451,7 @@ module CreateQuery = (Config: ResultConfig) => {
         children: renderPropObj => ReasonReact.reactElement,
       ) =>
     ReasonReact.wrapJsForReason(
-      ~reactClass=queryComponent,
+      ~reactClass=component,
       ~props=
         Js.Nullable.{
           "query": graphqlQueryAST,
