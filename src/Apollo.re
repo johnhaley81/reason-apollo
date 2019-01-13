@@ -15,6 +15,35 @@ module type Config = {
   let parse: Js.Json.t => t;
 };
 
+module type ResultConfig = {
+  let query: string;
+  type t;
+  let parse: Js.Json.t => Belt.Result.t(t, Decode.ParseError.failure);
+};
+
+module Error = {
+  type t = {
+    message: string,
+    graphqlErrors: option(array(string)),
+    networkError: option(string),
+  };
+
+  let make = (message, graphqlErrors, networkError) => {
+    message,
+    graphqlErrors,
+    networkError,
+  };
+
+  let parse = json =>
+    Decode.AsOption.(
+      Pipeline.succeed(make)
+      |> Pipeline.field("message", string)
+      |> Pipeline.optionalField("graphqlErrors", array(string))
+      |> Pipeline.optionalField("networkError", string)
+      |> Pipeline.run(json)
+    );
+};
+
 type apolloError = {
   .
   "message": string,
@@ -65,17 +94,26 @@ type subscribeToMoreOptions = {
   onError: onErrorT,
 };
 
-[@bs.deriving abstract]
-type queryRenderPropObjJS = {
-  loading: bool,
-  data: Js.Nullable.t(Js.Json.t),
-  error: Js.Nullable.t(apolloError),
-  refetch:
-    Js.Null_undefined.t(Js.Json.t) => Js.Promise.t(queryRenderPropObjJS),
-  networkStatus: int,
-  variables: Js.Null_undefined.t(Js.Json.t),
-  fetchMore: fetchMoreOptions => Js.Promise.t(unit),
-  subscribeToMore: (subscribeToMoreOptions, unit) => unit,
+module QueryResponse = {
+  [@bs.deriving abstract]
+  type t = {
+    loading: bool,
+    data: Js.Json.t,
+    error: Js.Json.t,
+    networkStatus: int,
+    variables: Js.Json.t,
+  };
+
+  [@bs.send]
+  external refetch: (t, Js.Nullable.t(Js.Json.t)) => Js.Promise.t(t) = "";
+  let refetch = (response, json) =>
+    refetch(response, Js.Nullable.fromOption(json));
+
+  [@bs.send]
+  external fetchMore: (t, fetchMoreOptions) => Js.Promise.t(unit) = "";
+
+  [@bs.send]
+  external subscribeToMore: (t, subscribeToMoreOptions, unit) => unit = "";
 };
 
 type mutationRenderPropObjJS = {
@@ -186,8 +224,7 @@ module Client = {
   };
 
   [@bs.send]
-  external query_:
-    (client, queryOptions) => Js.Promise.t(queryRenderPropObjJS) =
+  external query_: (client, queryOptions) => Js.Promise.t(QueryResponse.t) =
     "query";
   let query = (~query, ~variables=?, client) =>
     query_(client, queryOptions(~query, ~variables?, ()));
@@ -317,19 +354,21 @@ module Consumer = {
 /*
  * Expose a module to perform "query" operations for the given client
  */
-module CreateQuery = (Config: Config) => {
+module CreateQuery = (Config: ResultConfig) => {
   [@bs.module "react-apollo"]
   external queryComponent: ReasonReact.reactClass = "Query";
+
   type response =
     | Loading
-    | Error(apolloError)
+    | Error(Error.t)
+    | ParseError(Decode.ParseError.failure)
     | Data(Config.t);
 
   type renderPropObj = {
-    result: response,
-    data: option(Config.t),
-    error: option(apolloError),
     loading: bool,
+    result: response,
+    data: Belt.Result.t(Config.t, Decode.ParseError.failure),
+    error: option(Error.t),
     refetch: option(Js.Json.t) => Js.Promise.t(response),
     fetchMore:
       (~variables: Js.Json.t=?, ~updateQuery: updateQueryT, unit) =>
@@ -348,66 +387,53 @@ module CreateQuery = (Config: Config) => {
   };
 
   let graphqlQueryAST = gql(. Config.query);
-  let apolloDataToVariant: queryRenderPropObjJS => response =
-    apolloData =>
-      switch (
-        apolloData->loadingGet,
-        apolloData->dataGet |> Js.Nullable.toOption,
-        apolloData->errorGet |> Js.Nullable.toOption,
-      ) {
-      | (true, _, _) => Loading
-      | (false, Some(response), _) => Data(Config.parse(response))
-      | (false, _, Some(error)) => Error(error)
-      | (false, None, None) =>
-        Error({
-          "message": "No data",
-          "graphQLErrors": Js.Nullable.null,
-          "networkError": Js.Nullable.null,
-        })
-      };
+  let toVariant = (loading, data, error) =>
+    switch (loading, data, error) {
+    | (true, _, _) => Loading
+    | (false, Belt.Result.Ok(response), None) => Data(response)
+    | (false, Belt.Result.Error(error), None) => ParseError(error)
+    | (false, _, Some(error)) => Error(error)
+    };
 
-  let convertJsInputToReason = (apolloData: queryRenderPropObjJS) => {
-    result: apolloData |> apolloDataToVariant,
-    data:
-      switch (apolloData->dataGet |> getNonEmptyObj) {
-      | None => None
-      | Some(data) =>
-        switch (Config.parse(data)) {
-        | parsedData => Some(parsedData)
-        | exception _ => None
-        }
-      },
-    error:
-      switch (apolloData->errorGet |> Js.Nullable.toOption) {
-      | Some(error) => Some(error)
-      | None => None
-      },
-    loading: apolloData->loadingGet,
-    refetch: variables =>
-      apolloData->(refetchGet(variables |> Js.Nullable.fromOption))
-      |> Js.Promise.then_(data =>
-           data |> apolloDataToVariant |> Js.Promise.resolve
-         ),
-    fetchMore: (~variables=?, ~updateQuery, ()) =>
-      apolloData->(
-                    fetchMoreGet(
-                      fetchMoreOptions(~variables?, ~updateQuery, ()),
-                    )
-                  ),
-    networkStatus: apolloData->networkStatusGet,
-    subscribeToMore:
-      (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
-      apolloData->(
-                    subscribeToMoreGet(
-                      subscribeToMoreOptions(
-                        ~document,
-                        ~variables?,
-                        ~updateQuery?,
-                        ~onError?,
-                        (),
-                      ),
-                    )
-                  ),
+  let getData = response => {
+    let loading = response->QueryResponse.loadingGet;
+    let data = response->QueryResponse.dataGet->Config.parse;
+    let error = response->QueryResponse.errorGet->Error.parse;
+    (loading, data, error);
+  };
+
+  let convertJsInputToReason = response => {
+    let (loading, data, error) = getData(response);
+    let result = toVariant(loading, data, error);
+
+    {
+      result,
+      data,
+      error,
+      loading,
+      refetch: variables =>
+        response->QueryResponse.refetch(variables)
+        |> Js.Promise.then_(response => {
+             let (loading, data, error) = getData(response);
+             toVariant(loading, data, error) |> Js.Promise.resolve;
+           }),
+      fetchMore: (~variables=?, ~updateQuery, ()) =>
+        response->QueryResponse.fetchMore(
+          fetchMoreOptions(~variables?, ~updateQuery, ()),
+        ),
+      networkStatus: response->QueryResponse.networkStatusGet,
+      subscribeToMore:
+        (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
+        response->QueryResponse.subscribeToMore(
+          subscribeToMoreOptions(
+            ~document,
+            ~variables?,
+            ~updateQuery?,
+            ~onError?,
+            (),
+          ),
+        ),
+    };
   };
 
   let make =
@@ -442,7 +468,7 @@ module CreateQuery = (Config: Config) => {
           "context": context |> fromOption,
         },
       apolloData =>
-      apolloData |> convertJsInputToReason |> children
+      apolloData->convertJsInputToReason->children
     );
 };
 

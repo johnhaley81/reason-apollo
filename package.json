@@ -20,6 +20,7 @@
     "apollo-link": "^1.2.3",
     "apollo-link-http": "^1.5.5",
     "apollo-utilities": "alpha",
+    "bs-decode": "*",
     "bs-platform": "^4.0.5",
     "graphql": "^14.0.2",
     "graphql-tag": "^2.10.0",
@@ -36,11 +37,11 @@
     "apollo-client": "alpha",
     "apollo-link": "^1.2.3",
     "apollo-link-http": "^1.5.5",
+    "bs-decode": "github:mlms13/bs-decode",
     "bs-platform": "^4.0.5",
     "graphql": "^14.0.2",
     "graphql-tag": "^2.10.0",
     "react-apollo": "alpha",
     "reason-react": "^0.5.3"
-  },
-  "dependencies": {}
+  }
 }
