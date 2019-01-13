@@ -32,14 +32,15 @@ module Error = {
     message,
     graphqlErrors,
     networkError,
+    /* TODO: extraInfo */
   };
 
   let parse = json =>
     Decode.AsOption.(
       Pipeline.succeed(make)
       |> Pipeline.field("message", string)
-      |> Pipeline.optionalField("graphqlErrors", array(string))
-      |> Pipeline.optionalField("networkError", string)
+      |> Pipeline.optionalField("graphQLErrors", array(string))
+      |> Pipeline.optionalField("networkError", field("message", string))
       |> Pipeline.run(json)
     );
 };
@@ -100,7 +101,7 @@ module QueryResponse = {
     loading: bool,
     data: Js.Json.t,
     error: Js.Json.t,
-    networkStatus: int,
+    networkStatus: Js.Nullable.t(int),
     variables: Js.Json.t,
   };
 
@@ -373,7 +374,7 @@ module CreateQuery = (Config: ResultConfig) => {
     fetchMore:
       (~variables: Js.Json.t=?, ~updateQuery: updateQueryT, unit) =>
       Js.Promise.t(unit),
-    networkStatus: int,
+    networkStatus: option(int),
     subscribeToMore:
       (
         ~document: queryString,
@@ -390,8 +391,8 @@ module CreateQuery = (Config: ResultConfig) => {
   let toVariant = (loading, data, error) =>
     switch (loading, data, error) {
     | (true, _, _) => Loading
-    | (false, Belt.Result.Ok(response), None) => Data(response)
     | (false, Belt.Result.Error(error), None) => ParseError(error)
+    | (false, Belt.Result.Ok(response), None) => Data(response)
     | (false, _, Some(error)) => Error(error)
     };
 
@@ -421,7 +422,8 @@ module CreateQuery = (Config: ResultConfig) => {
         response->QueryResponse.fetchMore(
           fetchMoreOptions(~variables?, ~updateQuery, ()),
         ),
-      networkStatus: response->QueryResponse.networkStatusGet,
+      networkStatus:
+        response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
       subscribeToMore:
         (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
         response->QueryResponse.subscribeToMore(
