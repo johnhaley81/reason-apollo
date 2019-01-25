@@ -117,14 +117,16 @@ module QueryResponse = {
   external subscribeToMore: (t, subscribeToMoreOptions, unit) => unit = "";
 };
 
-type mutationRenderPropObjJS = {
-  .
-  "loading": bool,
-  "called": bool,
-  "data": Js.Nullable.t(Js.Json.t),
-  "error": Js.Nullable.t(apolloError),
-  "networkStatus": int,
-  "variables": Js.Nullable.t(Js.Json.t),
+module MutationResponse = {
+  [@bs.deriving abstract]
+  type t = {
+    loading: bool,
+    called: bool,
+    data: Js.Json.t,
+    error: Js.Json.t,
+    networkStatus: Js.Nullable.t(int),
+    variables: Js.Json.t,
+  };
 };
 
 type client;
@@ -212,7 +214,7 @@ module Client = {
 
   [@bs.send]
   external mutate_:
-    (client, mutateOptions) => Js.Promise.t(mutationRenderPropObjJS) =
+    (client, mutateOptions) => Js.Promise.t(MutationResponse.t) =
     "mutate";
   let mutate = (~mutation, ~variables=?, client) =>
     mutate_(client, mutateOptions(~mutation, ~variables?, ()));
@@ -370,11 +372,11 @@ module CreateQuery = (Config: ResultConfig) => {
     result: response,
     data: Belt.Result.t(Config.t, Decode.ParseError.failure),
     error: option(Error.t),
+    networkStatus: option(int),
     refetch: option(Js.Json.t) => Js.Promise.t(response),
     fetchMore:
       (~variables: Js.Json.t=?, ~updateQuery: updateQueryT, unit) =>
       Js.Promise.t(unit),
-    networkStatus: option(int),
     subscribeToMore:
       (
         ~document: queryString,
@@ -408,10 +410,12 @@ module CreateQuery = (Config: ResultConfig) => {
     let result = toVariant(loading, data, error);
 
     {
+      loading,
       result,
       data,
       error,
-      loading,
+      networkStatus:
+        response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
       refetch: variables =>
         response->QueryResponse.refetch(variables)
         |> Js.Promise.then_(response => {
@@ -422,8 +426,6 @@ module CreateQuery = (Config: ResultConfig) => {
         response->QueryResponse.fetchMore(
           fetchMoreOptions(~variables?, ~updateQuery, ()),
         ),
-      networkStatus:
-        response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
       subscribeToMore:
         (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
         response->QueryResponse.subscribeToMore(
@@ -477,77 +479,79 @@ module CreateQuery = (Config: ResultConfig) => {
 /*
  * Expose a module to perform "mutation" operations for the given client
  */
-module CreateMutation = (Config: Config) => {
-  external cast:
-    string =>
-    {
-      .
-      "data": Js.Json.t,
-      "loading": bool,
-    } =
-    "%identity";
+module CreateMutation = (Config: ResultConfig) => {
   [@bs.module "react-apollo"]
-  external mutationComponent: ReasonReact.reactClass = "Mutation";
-  let graphqlMutationAST = gql(. Config.query);
+  external component: ReasonReact.reactClass = "Mutation";
+
   type response =
     | Loading
-    | Error(apolloError)
-    | Data(Config.t)
-    | NotCalled;
+    | Error(Error.t)
+    | ParseError(Decode.ParseError.failure)
+    | Data(Config.t);
+  /* | NotCalled; */
+
   type renderPropObj = {
-    result: response,
-    data: option(Config.t),
     loading: bool,
-    error: option(apolloError),
-    networkStatus: int,
+    result: response,
+    data: Belt.Result.t(Config.t, Decode.ParseError.failure),
+    error: option(Error.t),
+    networkStatus: option(int),
   };
-  type apolloMutation =
+
+  let graphqlMutationAST = gql(. Config.query);
+
+  type mutate =
     (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
-    Js.Promise.t(mutationRenderPropObjJS);
-  [@bs.obj]
-  external makeMutateParams:
-    (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?) => _ =
-    "";
-  let apolloMutationFactory =
-      (~jsMutation, ~variables=?, ~refetchQueries=?, ()) =>
-    jsMutation(makeMutateParams(~variables?, ~refetchQueries?));
-  let apolloDataToReason: mutationRenderPropObjJS => response =
-    apolloData =>
-      switch (
-        apolloData##loading,
-        apolloData##data |> getNonEmptyObj,
-        apolloData##error |> Js.Nullable.toOption,
-      ) {
-      | (true, _, _) => Loading
-      | (false, Some(data), _) => Data(Config.parse(data))
-      | (false, _, Some(error)) => Error(error)
-      | (false, None, None) => NotCalled
-      };
-  let convertJsInputToReason = (apolloData: mutationRenderPropObjJS) => {
-    result: apolloDataToReason(apolloData),
-    data:
-      switch (apolloData##data |> getNonEmptyObj) {
-      | None => None
-      | Some(data) =>
-        switch (Config.parse(data)) {
-        | parsedData => Some(parsedData)
-        | exception _ => None
-        }
-      },
-    error: apolloData##error |> Js.Nullable.toOption,
-    loading: apolloData##loading,
-    networkStatus: apolloData##networkStatus,
+    Js.Promise.t(MutationResponse.t);
+
+  [@bs.deriving abstract]
+  type mutateParams = {
+    [@bs.optional]
+    variables: Js.Json.t,
+    [@bs.optional]
+    refetchQueries: array(string),
+    /* TODO: update, optimisticResponse */
   };
+
+  let toVariant = (loading, data, error) =>
+    switch (loading, data, error) {
+    | (true, _, _) => Loading
+    | (false, Belt.Result.Error(error), None) => ParseError(error)
+    | (false, Belt.Result.Ok(response), None) => Data(response)
+    | (false, _, Some(error)) => Error(error)
+    };
+
+  let getData = response => {
+    let loading = response->QueryResponse.loadingGet;
+    let data = response->QueryResponse.dataGet->Config.parse;
+    let error = response->QueryResponse.errorGet->Error.parse;
+    (loading, data, error);
+  };
+
+  let convertJsInputToReason = response => {
+    let (loading, data, error) = getData(response);
+    let result = toVariant(loading, data, error);
+
+    {
+      loading,
+      result,
+      data,
+      error,
+      networkStatus:
+        response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
+    };
+  };
+
   let make =
       (
         ~client: option(client)=?,
         ~variables: option(Js.Json.t)=?,
         ~onError: option(unit => unit)=?,
         ~onCompleted: option(unit => unit)=?,
-        children: (apolloMutation, renderPropObj) => ReasonReact.reactElement,
+        children: (mutate, renderPropObj) => ReasonReact.reactElement,
       ) =>
     ReasonReact.wrapJsForReason(
-      ~reactClass=mutationComponent,
+      ~reactClass=component,
       ~props=
         Js.Nullable.{
           "mutation": graphqlMutationAST,
@@ -556,9 +560,10 @@ module CreateMutation = (Config: Config) => {
           "onError": onError |> fromOption,
           "onCompleted": onCompleted |> fromOption,
         },
-      (mutation, apolloData) =>
+      (mutate, apolloData) =>
       children(
-        apolloMutationFactory(~jsMutation=mutation),
+        (~variables=?, ~refetchQueries=?, ()) =>
+          mutate(mutateParams(~variables?, ~refetchQueries?, ())),
         convertJsInputToReason(apolloData),
       )
     );
