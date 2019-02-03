@@ -354,10 +354,68 @@ module Consumer = {
     );
 };
 
+module type Query = {
+  type t;
+  let component: ReasonReact.reactClass;
+  type response =
+    | Loading
+    | Error(Error.t)
+    | ParseError(Decode.ParseError.failure)
+    | Data(t);
+  type renderPropObj = {
+    loading: bool,
+    result: response,
+    data: Belt.Result.t(t, Decode.ParseError.failure),
+    error: option(Error.t),
+    networkStatus: option(int),
+    refetch: option(Js.Json.t) => Js.Promise.t(response),
+    fetchMore:
+      (~variables: Js.Json.t=?, ~updateQuery: updateQueryT, unit) =>
+      Js.Promise.t(unit),
+    subscribeToMore:
+      (
+        ~document: queryString,
+        ~variables: Js.Json.t=?,
+        ~updateQuery: updateQuerySubscriptionT=?,
+        ~onError: onErrorT=?,
+        unit,
+        unit
+      ) =>
+      unit,
+  };
+  let graphqlQueryAST: queryString;
+  let toVariant:
+    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t)) =>
+    response;
+  let getData:
+    QueryResponse.t =>
+    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t));
+  let convertJsInputToReason: QueryResponse.t => renderPropObj;
+  let make:
+    (
+      ~client: client=?,
+      ~variables: Js.Json.t=?,
+      ~pollInterval: int=?,
+      ~notifyOnNetworkStatusChange: bool=?,
+      ~fetchPolicy: string=?,
+      ~errorPolicy: string=?,
+      ~ssr: bool=?,
+      ~displayName: string=?,
+      ~delay: bool=?,
+      ~context: Js.Json.t=?,
+      renderPropObj => ReasonReact.reactElement
+    ) =>
+    ReasonReact.component(
+      ReasonReact.stateless,
+      ReasonReact.noRetainedProps,
+      ReasonReact.actionless,
+    );
+};
 /*
  * Expose a module to perform "query" operations for the given client
  */
-module CreateQuery = (Config: ResultConfig) => {
+module CreateQuery = (Config: ResultConfig) : (Query with type t = Config.t) => {
+  type t = Config.t;
   [@bs.module "react-apollo"]
   external component: ReasonReact.reactClass = "Query";
 
@@ -365,12 +423,12 @@ module CreateQuery = (Config: ResultConfig) => {
     | Loading
     | Error(Error.t)
     | ParseError(Decode.ParseError.failure)
-    | Data(Config.t);
+    | Data(t);
 
   type renderPropObj = {
     loading: bool,
     result: response,
-    data: Belt.Result.t(Config.t, Decode.ParseError.failure),
+    data: Belt.Result.t(t, Decode.ParseError.failure),
     error: option(Error.t),
     networkStatus: option(int),
     refetch: option(Js.Json.t) => Js.Promise.t(response),
@@ -476,10 +534,66 @@ module CreateQuery = (Config: ResultConfig) => {
     );
 };
 
+module type Mutation = {
+  type t;
+  let component: ReasonReact.reactClass;
+  type response =
+    | Loading
+    | Error(Error.t)
+    | ParseError(Decode.ParseError.failure)
+    | Data(t);
+  type renderPropObj = {
+    loading: bool,
+    result: response,
+    data: Belt.Result.t(t, Decode.ParseError.failure),
+    error: option(Error.t),
+    networkStatus: option(int),
+  };
+  let graphqlMutationAST: queryString;
+  type mutate =
+    (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
+    Js.Promise.t(MutationResponse.t);
+  type mutateParams;
+  let mutateParams:
+    (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
+    mutateParams;
+  let variables: mutateParams => option(Js.Json.t);
+
+  let variablesGet: mutateParams => option(Js.Json.t);
+
+  let refetchQueries: mutateParams => option(array(string));
+
+  let refetchQueriesGet: mutateParams => option(array(string));
+
+  let toVariant:
+    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t)) =>
+    response;
+  let getData:
+    QueryResponse.t =>
+    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t));
+  let convertJsInputToReason: QueryResponse.t => renderPropObj;
+  let make:
+    (
+      ~client: client=?,
+      ~variables: Js.Json.t=?,
+      ~onError: unit => unit=?,
+      ~onCompleted: unit => unit=?,
+      (mutate, renderPropObj) => ReasonReact.reactElement
+    ) =>
+    ReasonReact.component(
+      ReasonReact.stateless,
+      ReasonReact.noRetainedProps,
+      ReasonReact.actionless,
+    );
+};
+
 /*
  * Expose a module to perform "mutation" operations for the given client
  */
-module CreateMutation = (Config: ResultConfig) => {
+module CreateMutation =
+       (Config: ResultConfig)
+       : (Mutation with type t = Config.t) => {
+  type t = Config.t;
   [@bs.module "react-apollo"]
   external component: ReasonReact.reactClass = "Mutation";
 
@@ -487,13 +601,13 @@ module CreateMutation = (Config: ResultConfig) => {
     | Loading
     | Error(Error.t)
     | ParseError(Decode.ParseError.failure)
-    | Data(Config.t);
+    | Data(t);
   /* | NotCalled; */
 
   type renderPropObj = {
     loading: bool,
     result: response,
-    data: Belt.Result.t(Config.t, Decode.ParseError.failure),
+    data: Belt.Result.t(t, Decode.ParseError.failure),
     error: option(Error.t),
     networkStatus: option(int),
   };
@@ -569,10 +683,48 @@ module CreateMutation = (Config: ResultConfig) => {
     );
 };
 
+module type Subscription = {
+  type t;
+  let subscriptionComponent: ReasonReact.reactClass;
+  let graphQLSubscriptionAST: queryString;
+  type response =
+    | Loading
+    | Error(apolloError)
+    | Data(t);
+  type renderPropObj = {
+    result: response,
+    data: option(t),
+    error: option(apolloError),
+    loading: bool,
+  };
+  type renderPropObjJS = {
+    .
+    "data": Js.Nullable.t(Js.Json.t),
+    "error": Js.Nullable.t(apolloError),
+    "loading": bool,
+  };
+  let apolloDataToVariant: renderPropObjJS => response;
+  let convertJsInputToReason: renderPropObjJS => renderPropObj;
+  let make:
+    (
+      ~client: client=?,
+      ~variables: Js.Json.t=?,
+      ~children: renderPropObj => ReasonReact.reactElement
+    ) =>
+    ReasonReact.component(
+      ReasonReact.stateless,
+      ReasonReact.noRetainedProps,
+      ReasonReact.actionless,
+    );
+};
+
 /*
  * Expose a module to perform "subscription" operations for the given client
  */
-module CreateSubscription = (Config: Config) => {
+module CreateSubscription =
+       (Config: Config)
+       : (Subscription with type t = Config.t) => {
+  type t = Config.t;
   [@bs.module "react-apollo"]
   external subscriptionComponent: ReasonReact.reactClass = "Subscription";
 
@@ -581,11 +733,11 @@ module CreateSubscription = (Config: Config) => {
   type response =
     | Loading
     | Error(apolloError)
-    | Data(Config.t);
+    | Data(t);
 
   type renderPropObj = {
     result: response,
-    data: option(Config.t),
+    data: option(t),
     error: option(apolloError),
     loading: bool,
   };
