@@ -19,6 +19,8 @@ module type ResultConfig = {
   let query: string;
   type t;
   let parse: Js.Json.t => Belt.Result.t(t, Decode.ParseError.failure);
+  type variables;
+  let variables: variables => Js.Json.t;
 };
 
 module Error = {
@@ -129,6 +131,36 @@ module MutationResponse = {
   };
 };
 
+module Response = {
+  type t('a) =
+    | Loading
+    | Error(Error.t)
+    | ParseError(Decode.ParseError.failure)
+    | Data('a);
+
+  let toVariant = (loading, dataDecodeResult, error) =>
+    switch (loading, dataDecodeResult, error) {
+    | (true, _, _) => Loading
+    | (false, Belt.Result.Error(error), None) => ParseError(error)
+    | (false, Belt.Result.Ok(response), None) => Data(response)
+    | (false, _, Some(error)) => Error(error)
+    };
+
+  let queryResponseToVariant = (decoder, response) =>
+    toVariant(
+      response->QueryResponse.loadingGet,
+      response->QueryResponse.dataGet->decoder,
+      response->QueryResponse.errorGet->Error.parse,
+    );
+
+  let mutationResponseToVariant = (decoder, response) =>
+    toVariant(
+      response->MutationResponse.loadingGet,
+      response->MutationResponse.dataGet->decoder,
+      response->MutationResponse.errorGet->Error.parse,
+    );
+};
+
 type client;
 
 type context;
@@ -213,11 +245,10 @@ module Client = {
   };
 
   [@bs.send]
-  external mutate_:
-    (client, mutateOptions) => Js.Promise.t(MutationResponse.t) =
-    "mutate";
+  external mutate: (client, mutateOptions) => Js.Promise.t(MutationResponse.t) =
+    "";
   let mutate = (~mutation, ~variables=?, client) =>
-    mutate_(client, mutateOptions(~mutation, ~variables?, ()));
+    mutate(client, mutateOptions(~mutation, ~variables?, ()));
 
   [@bs.deriving abstract]
   type queryOptions = {
@@ -227,10 +258,10 @@ module Client = {
   };
 
   [@bs.send]
-  external query_: (client, queryOptions) => Js.Promise.t(QueryResponse.t) =
-    "query";
-  let query = (~query, ~variables=?, client) =>
-    query_(client, queryOptions(~query, ~variables?, ()));
+  external query: (client, queryOptions) => Js.Promise.t(QueryResponse.t) =
+    "";
+  let query = (~query as queryArg, ~variables=?, client) =>
+    query(client, queryOptions(~query=queryArg, ~variables?, ()));
 
   [@bs.send] external resetStore: client => unit = "";
 
@@ -356,17 +387,17 @@ module Consumer = {
 
 module type Query = {
   type t;
+  type variables;
+  type response = Response.t(t);
+  let graphqlQueryAST: queryString;
+  let query: (~variables: variables=?, client) => Js.Promise.t(response);
+};
+
+module type QueryComponent = {
+  include Query;
   let component: ReasonReact.reactClass;
-  type response =
-    | Loading
-    | Error(Error.t)
-    | ParseError(Decode.ParseError.failure)
-    | Data(t);
   type renderPropObj = {
-    loading: bool,
     result: response,
-    data: Belt.Result.t(t, Decode.ParseError.failure),
-    error: option(Error.t),
     networkStatus: option(int),
     refetch: option(Js.Json.t) => Js.Promise.t(response),
     fetchMore:
@@ -383,14 +414,6 @@ module type Query = {
       ) =>
       unit,
   };
-  let graphqlQueryAST: queryString;
-  let toVariant:
-    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t)) =>
-    response;
-  let getData:
-    QueryResponse.t =>
-    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t));
-  let convertJsInputToReason: QueryResponse.t => renderPropObj;
   let make:
     (
       ~client: client=?,
@@ -414,22 +437,43 @@ module type Query = {
 /*
  * Expose a module to perform "query" operations for the given client
  */
-module CreateQuery = (Config: ResultConfig) : (Query with type t = Config.t) => {
+module CreateQuery =
+       (Config: ResultConfig)
+       : (Query with type t = Config.t and type variables = Config.variables) => {
   type t = Config.t;
+  type variables = Config.variables;
+
+  type response = Response.t(t);
+  let graphqlQueryAST = gql(. Config.query);
+
+  let query = (~variables=?, client) =>
+    Client.query(
+      ~query=graphqlQueryAST,
+      ~variables=?variables->Belt.Option.map(Config.variables),
+      client,
+    )
+    |> Js.Promise.(
+         then_(response =>
+           response
+           |> Response.queryResponseToVariant(Config.parse)
+           |> resolve
+         )
+       );
+};
+
+module CreateQueryComponent =
+       (Config: ResultConfig)
+
+         : (
+           QueryComponent with
+             type t = Config.t and type variables = Config.variables
+       ) => {
+  include CreateQuery(Config);
   [@bs.module "react-apollo"]
   external component: ReasonReact.reactClass = "Query";
 
-  type response =
-    | Loading
-    | Error(Error.t)
-    | ParseError(Decode.ParseError.failure)
-    | Data(t);
-
   type renderPropObj = {
-    loading: bool,
     result: response,
-    data: Belt.Result.t(t, Decode.ParseError.failure),
-    error: option(Error.t),
     networkStatus: option(int),
     refetch: option(Js.Json.t) => Js.Promise.t(response),
     fetchMore:
@@ -447,39 +491,18 @@ module CreateQuery = (Config: ResultConfig) : (Query with type t = Config.t) => 
       unit,
   };
 
-  let graphqlQueryAST = gql(. Config.query);
-  let toVariant = (loading, data, error) =>
-    switch (loading, data, error) {
-    | (true, _, _) => Loading
-    | (false, Belt.Result.Error(error), None) => ParseError(error)
-    | (false, Belt.Result.Ok(response), None) => Data(response)
-    | (false, _, Some(error)) => Error(error)
-    };
-
-  let getData = response => {
-    let loading = response->QueryResponse.loadingGet;
-    let data = response->QueryResponse.dataGet->Config.parse;
-    let error = response->QueryResponse.errorGet->Error.parse;
-    (loading, data, error);
-  };
-
   let convertJsInputToReason = response => {
-    let (loading, data, error) = getData(response);
-    let result = toVariant(loading, data, error);
-
     {
-      loading,
-      result,
-      data,
-      error,
+      result: response |> Response.queryResponseToVariant(Config.parse),
       networkStatus:
         response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
       refetch: variables =>
         response->QueryResponse.refetch(variables)
-        |> Js.Promise.then_(response => {
-             let (loading, data, error) = getData(response);
-             toVariant(loading, data, error) |> Js.Promise.resolve;
-           }),
+        |> Js.Promise.then_(response =>
+             response
+             |> Response.queryResponseToVariant(Config.parse)
+             |> Js.Promise.resolve
+           ),
       fetchMore: (~variables=?, ~updateQuery, ()) =>
         response->QueryResponse.fetchMore(
           fetchMoreOptions(~variables?, ~updateQuery, ()),
@@ -536,49 +559,29 @@ module CreateQuery = (Config: ResultConfig) : (Query with type t = Config.t) => 
 
 module type Mutation = {
   type t;
+  type variables;
+  type response = Response.t(t);
+  let graphqlMutationAST: queryString;
+  let mutate: (~variables: variables=?, client) => Js.Promise.t(response);
+};
+
+module type MutationComponent = {
+  include Mutation;
   let component: ReasonReact.reactClass;
-  type response =
-    | Loading
-    | Error(Error.t)
-    | ParseError(Decode.ParseError.failure)
-    | Data(t);
   type renderPropObj = {
-    loading: bool,
     result: response,
-    data: Belt.Result.t(t, Decode.ParseError.failure),
-    error: option(Error.t),
     networkStatus: option(int),
   };
-  let graphqlMutationAST: queryString;
-  type mutate =
+  type mutateInView =
     (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
     Js.Promise.t(MutationResponse.t);
-  type mutateParams;
-  let mutateParams:
-    (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
-    mutateParams;
-  let variables: mutateParams => option(Js.Json.t);
-
-  let variablesGet: mutateParams => option(Js.Json.t);
-
-  let refetchQueries: mutateParams => option(array(string));
-
-  let refetchQueriesGet: mutateParams => option(array(string));
-
-  let toVariant:
-    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t)) =>
-    response;
-  let getData:
-    QueryResponse.t =>
-    (bool, Belt.Result.t(t, Decode.ParseError.failure), option(Error.t));
-  let convertJsInputToReason: QueryResponse.t => renderPropObj;
   let make:
     (
       ~client: client=?,
       ~variables: Js.Json.t=?,
       ~onError: unit => unit=?,
       ~onCompleted: unit => unit=?,
-      (mutate, renderPropObj) => ReasonReact.reactElement
+      (mutateInView, renderPropObj) => ReasonReact.reactElement
     ) =>
     ReasonReact.component(
       ReasonReact.stateless,
@@ -592,29 +595,48 @@ module type Mutation = {
  */
 module CreateMutation =
        (Config: ResultConfig)
-       : (Mutation with type t = Config.t) => {
+
+         : (
+           Mutation with type t = Config.t and type variables = Config.variables
+       ) => {
   type t = Config.t;
+  type variables = Config.variables;
+
+  type response = Response.t(t);
+
+  let graphqlMutationAST = gql(. Config.query);
+  let mutate = (~variables=?, client) =>
+    Client.mutate(
+      ~mutation=graphqlMutationAST,
+      ~variables=?variables->Belt.Option.map(Config.variables),
+      client,
+    )
+    |> Js.Promise.(
+         then_(response =>
+           response
+           |> Response.mutationResponseToVariant(Config.parse)
+           |> resolve
+         )
+       );
+};
+
+module CreateMutationComponent =
+       (Config: ResultConfig)
+
+         : (
+           MutationComponent with
+             type t = Config.t and type variables = Config.variables
+       ) => {
+  include CreateMutation(Config);
   [@bs.module "react-apollo"]
   external component: ReasonReact.reactClass = "Mutation";
 
-  type response =
-    | Loading
-    | Error(Error.t)
-    | ParseError(Decode.ParseError.failure)
-    | Data(t);
-  /* | NotCalled; */
-
   type renderPropObj = {
-    loading: bool,
     result: response,
-    data: Belt.Result.t(t, Decode.ParseError.failure),
-    error: option(Error.t),
     networkStatus: option(int),
   };
 
-  let graphqlMutationAST = gql(. Config.query);
-
-  type mutate =
+  type mutateInView =
     (~variables: Js.Json.t=?, ~refetchQueries: array(string)=?, unit) =>
     Js.Promise.t(MutationResponse.t);
 
@@ -627,33 +649,10 @@ module CreateMutation =
     /* TODO: update, optimisticResponse */
   };
 
-  let toVariant = (loading, data, error) =>
-    switch (loading, data, error) {
-    | (true, _, _) => Loading
-    | (false, Belt.Result.Error(error), None) => ParseError(error)
-    | (false, Belt.Result.Ok(response), None) => Data(response)
-    | (false, _, Some(error)) => Error(error)
-    };
-
-  let getData = response => {
-    let loading = response->QueryResponse.loadingGet;
-    let data = response->QueryResponse.dataGet->Config.parse;
-    let error = response->QueryResponse.errorGet->Error.parse;
-    (loading, data, error);
-  };
-
   let convertJsInputToReason = response => {
-    let (loading, data, error) = getData(response);
-    let result = toVariant(loading, data, error);
-
-    {
-      loading,
-      result,
-      data,
-      error,
-      networkStatus:
-        response->QueryResponse.networkStatusGet->Js.Nullable.toOption,
-    };
+    result: response |> Response.mutationResponseToVariant(Config.parse),
+    networkStatus:
+      response->MutationResponse.networkStatusGet->Js.Nullable.toOption,
   };
 
   let make =
@@ -662,7 +661,7 @@ module CreateMutation =
         ~variables: option(Js.Json.t)=?,
         ~onError: option(unit => unit)=?,
         ~onCompleted: option(unit => unit)=?,
-        children: (mutate, renderPropObj) => ReasonReact.reactElement,
+        children: (mutateInView, renderPropObj) => ReasonReact.reactElement,
       ) =>
     ReasonReact.wrapJsForReason(
       ~reactClass=component,

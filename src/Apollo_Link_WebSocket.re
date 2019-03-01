@@ -1,5 +1,3 @@
-open Apollo_Types;
-
 /*
  apollo link ws
  */
@@ -8,6 +6,8 @@ open Apollo_Types;
 type webSocketLinkOptionsT = {
   [@bs.optional]
   reconnect: bool,
+  [@bs.optional]
+  connectionParams: Js.Json.t,
 };
 
 [@bs.deriving abstract]
@@ -16,11 +16,13 @@ type webSocketLinkT = {
   options: webSocketLinkOptionsT,
 };
 
-/* bind apollo-link-ws */
 [@bs.module "apollo-link-ws"] [@bs.new]
-external make_: webSocketLinkT => apolloLink = "WebSocketLink";
+external webSocketLink: webSocketLinkT => Apollo.apolloLink = "WebSocketLink";
 
-let make = (~uri, ~reconnect=?, ()) =>
-  make_(
-    webSocketLinkT(~uri, ~options=webSocketLinkOptionsT(~reconnect?, ())),
+let webSocketLink = (~uri, ~reconnect=?, ~connectionParams=?, ()) =>
+  webSocketLink(
+    webSocketLinkT(
+      ~uri,
+      ~options=webSocketLinkOptionsT(~reconnect?, ~connectionParams?, ()),
+    ),
   );
